@@ -1,0 +1,9 @@
+{
+  "task_id": "nn",
+  "type": "type-2",
+  "type_name": "BabelTower-CUDA",
+  "has_c_code": true,
+  "has_cuda_code": false,
+  "original_c_path": "nn.c",
+  "original_cuda_path": "nn_cuda.cu"
+}
