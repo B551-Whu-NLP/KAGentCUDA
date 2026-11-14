@@ -1,0 +1,9 @@
+{
+  "task_id": "CG",
+  "type": "type-5",
+  "type_name": "NPB-CUDA",
+  "has_c_code": true,
+  "has_cuda_code": true,
+  "original_c_path": "cg.cpp",
+  "original_cuda_path": "cg.cu"
+}

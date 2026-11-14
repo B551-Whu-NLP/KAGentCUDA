@@ -1,0 +1,62 @@
+{
+  "artifact_version": "v1.0.0",
+  "experiment_period": {
+    "original": "May 2026",
+    "revision": "2026-07-20/2026-07-25"
+  },
+  "hardware": {
+    "cpu": "Intel Core i7-14700KF",
+    "ram_gb": 32,
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "os": "Ubuntu 22.04 LTS"
+  },
+  "compilation_and_verification": {
+    "c_compiler": "GCC 11.4.0",
+    "c_flags": ["-O3"],
+    "cuda_compiler": "NVCC 11.8",
+    "cuda_release_flags": ["-O3", "-arch=sm_89"],
+    "sanitizers": ["memcheck", "racecheck", "initcheck", "synccheck"],
+    "runtime_timeout_seconds": 300
+  },
+  "correctness": {
+    "floating_point_relative_error_threshold": 1e-5,
+    "maximum_high_relative_error_ratio_exclusive": 0.01,
+    "rmse_threshold_exclusive": 0.001,
+    "integer_outputs": "exact match"
+  },
+  "timing": {
+    "warmup_runs": 3,
+    "measured_runs": 3,
+    "statistic": "median",
+    "cuda_timer": "cudaEvent",
+    "scope": "end-to-end execution including host-device transfers",
+    "pass_condition": "speedup > 1.0"
+  },
+  "llm_decoding": {
+    "temperature": 0.3,
+    "max_output_tokens": 8192
+  },
+  "response_budget": {
+    "k_values": [3, 5],
+    "primary_k": 3,
+    "non_iterative": "k independent candidates; any successful candidate satisfies the metric",
+    "kagentcuda": "one initial generation and up to k-1 repairs; stop on four-layer success and return the best-so-far candidate",
+    "tool_feedback": "one initial generation and k-1 repairs using raw failed-layer output; return the latest candidate; no early stop on four-layer success",
+    "lassi_inspired": "one initial generation and up to k-1 repairs; return the final candidate"
+  },
+  "retrieval": {
+    "stage1_examples": 1,
+    "stage2_examples": 2,
+    "final_examples": 3,
+    "structural_weight": 0.4,
+    "dwarf_weight": 0.6,
+    "identifier_obfuscation": "retrieval representations only; generation uses original source code"
+  },
+  "backbones": [
+    "qwen3-coder-30b-a3b-instruct",
+    "qwen3-coder-next",
+    "deepseek-v3-pro",
+    "claude-sonnet-4-5-20250929"
+  ],
+  "three_shot_seeds": [42, 2026, 10086]
+}

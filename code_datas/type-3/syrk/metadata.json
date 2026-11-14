@@ -1,0 +1,9 @@
+{
+  "task_id": "syrk",
+  "type": "type-3",
+  "type_name": "Polybench-CUDA",
+  "has_c_code": true,
+  "has_cuda_code": true,
+  "original_c_path": "syrk.c",
+  "original_cuda_path": "syrk.cu"
+}

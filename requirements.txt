@@ -1,0 +1,11 @@
+krippendorff==0.8.2
+numpy==2.4.6
+openai==2.38.0
+pandas==3.0.3
+pydantic==2.13.4
+rich==15.0.0
+scipy==1.17.1
+torch==2.11.0+cu126
+tqdm==4.67.3
+transformers==5.8.0
+tree_sitter==0.20.4

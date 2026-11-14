@@ -1,0 +1,9 @@
+{
+  "task_id": "heat-3d",
+  "type": "type-3",
+  "type_name": "Polybench-CUDA",
+  "has_c_code": true,
+  "has_cuda_code": true,
+  "original_c_path": "heat-3d.c",
+  "original_cuda_path": "heat-3d.cu"
+}

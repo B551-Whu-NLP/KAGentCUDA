@@ -1,0 +1,9 @@
+{
+  "task_id": "c_135",
+  "type": "type-2",
+  "type_name": "BabelTower-CUDA",
+  "has_c_code": true,
+  "has_cuda_code": true,
+  "original_c_path": "c_135.c",
+  "original_cuda_path": "cuda_135.cu"
+}
