@@ -152,7 +152,7 @@ Checkpoints are saved every 5 samples to `cuda_gen_results/checkpoints/` and loa
 | L3 | Correctness | Finite, matching outputs; `high_rel_error_ratio < 1%` and `rmse < 1e-3` |
 | L4 | Performance | Valid comparable timing and `speedup > 1.0` |
 
-Failure at any layer short-circuits the pipeline and provides diagnostic feedback for the next iteration. L4 diagnostics include kernel time, H2D/D2H transfer time, the transfer-to-kernel ratio and overlap when available from Nsight Systems; unavailable measurements remain unknown. L4 requires a CPU baseline and validated timing provenance. Proxy timing is recorded separately rather than reported as validated speedup.
+Failure at any layer short-circuits the pipeline and provides diagnostic feedback for the next iteration. L4 diagnostics include kernel time, H2D/D2H transfer time, the transfer-to-kernel ratio and overlap when available from Nsight Systems; unavailable measurements remain unknown. L4 requires a CPU baseline and validated timing provenance.
 
 ### Evaluate a single file manually
 

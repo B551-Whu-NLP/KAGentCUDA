@@ -152,7 +152,7 @@ optimization_workspace/<model>/seed<seed>/<type>_<task_id>/
 | L3 | 功能正确性 | 输出有限且匹配；`high_rel_error_ratio < 1%` 且 `rmse < 1e-3` |
 | L4 | 性能 | 有效、可比计时且 `speedup > 1.0` |
 
-任意层失败即短路，并向下一次迭代提供诊断反馈。L4 从 Nsight Systems 获取可用的 kernel 时间、H2D/D2H 传输时间、传输与计算时间比及重叠信息；无法获取的指标保留为未知。L4 需要 CPU 基线及经验证的计时来源；代理计时单独记录，不作为已验证加速比。
+任意层失败即短路，并向下一次迭代提供诊断反馈。L4 从 Nsight Systems 获取可用的 kernel 时间、H2D/D2H 传输时间、传输与计算时间比及重叠信息；无法获取的指标保留为未知。L4 需要 CPU 基线及经验证的计时来源。
 
 ### 手动评估单个文件
 

@@ -452,7 +452,7 @@ class CToCudaIterativeTranslator:
 
         print(f"\n模型: {self.model_name}  seed: {self.seed}  最大迭代: {self.max_iterations}")
         print(f"输入: {self.input_dir}  输出: {self.output_dir}")
-        print(f"检索: {'开启 (' + type(self.retriever).__name__ + ')' if self.retriever else '关闭（随机 fallback）'}")
+        print(f"检索: {'开启 (' + type(self.retriever).__name__ + ')' if self.retriever else '关闭'}")
 
         checkpoint = self._load_checkpoint()
         results: list = []

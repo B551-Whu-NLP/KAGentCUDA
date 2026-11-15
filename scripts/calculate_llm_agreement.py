@@ -189,8 +189,8 @@ def main():
     # 加载三个标注者的结果
     files = {
         'Qwen3-Coder-Next': LABEL_DIR / 'qwen3-coder-next_20260513_112414.json',
-        'GPT-4.1-Mini': LABEL_DIR / 'gpt-4.1-mini_20260513_113416.json',
-        'DeepSeek-V4-Pro': LABEL_DIR / 'deepseek-v4-pro_20260513_124040.json',
+        'GPT-4.1': LABEL_DIR / 'gpt-4.1_20260513_113416.json',
+        'DeepSeek-V3-Pro': LABEL_DIR / 'deepseek-v3-pro_20260513_124040.json',
     }
     
     annotators = {}

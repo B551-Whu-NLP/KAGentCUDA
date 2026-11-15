@@ -9,7 +9,7 @@ refinement, community-speedup, and failure-case results.
 |---|---|---|
 | `experiment_config.json` | experiment | Backbones, decoding parameters, verification thresholds, response budgets, retrieval settings, and stopping rules. |
 | `01_generation_per_program.csv` | program × seed × method × k | Four-layer 0/1 outcomes `com` / `run` / `cor` / `fast` for every program. Seeds: 42 (all methods, @1/@3/@5) and 2026/10086 (LLM methods, @3/@5). |
-| `02_rq4_trajectory.csv` | program × config × attempt (1–3) | Retained-candidate `fast` 0/1 and controller action (`stop` / `continue` / `rollback` / `budget-end`) after each generation attempt. |
+| `02_rq4_trajectory.csv` | program × config × attempt (1–3) | Retained-candidate `fast` outcomes and controller records. |
 | `03_community_speedup.csv` | 34 programs (30 PolyBench + 4 NPB) | Timing, speedup, and `S` for PPCG, Qwen3-Coder, Claude-4.5, KAGentCUDA, and the community kernel. |
 | `04_failure_cases.csv` | 40 residual-failure cases | Final failing layer (L1–L4), error category, and whether the final attempt resolved it. |
 | `05_three_shot_manifests.csv` | seed × program × slot (1–3) | The three C–CUDA exemplars drawn for Baseline-3-shot for each of the 109 evaluated programs under seeds 42 / 2026 / 10086 (981 rows = 109 × 3 × 3). For each query the three exemplars are sampled from the paired corpus excluding that query program. |
