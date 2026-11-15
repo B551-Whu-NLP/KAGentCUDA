@@ -50,7 +50,7 @@ CC_cpu  := $(CC)
 FL_cpu  := $(INCLUDES) $(CFLAGS) $(CLINKFLAGS)
 
 CC_cuda := nvcc
-FL_cuda := -O2 -arch=sm_80 -std=c++17 $(INCLUDES)
+FL_cuda := -O3 -arch=sm_89 -std=c++17 $(INCLUDES)
 
 CC_rocm := hipcc
 FL_rocm := -O2 --offload-arch=gfx90a -std=c++17 $(INCLUDES)

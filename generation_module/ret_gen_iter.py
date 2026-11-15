@@ -7,7 +7,6 @@ import re
 import sys
 import json
 import argparse
-import random
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -16,10 +15,8 @@ import io
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from llm_utils import OpenAILLM
-from data_module.data_loader import DataLoader
 
 from generation_module.eval_types import EvaluationResult, IterativeOptimizer
-from generation_module.reference_sources import paired_programs
 from generation_module.prompts_gen_iter import (
     build_initial_translation_prompt,
     build_optimization_prompt,
@@ -99,23 +96,7 @@ class CToCudaIterativeTranslator:
             else self.checkpoint_dir / f"{model_name}_iterative_checkpoint.json"
         )
 
-        self._fallback_pairs = self._load_fallback_pairs() if retriever is None else []
         self.optimizer = IterativeOptimizer(max_iterations=max_iterations)
-
-    def _load_fallback_pairs(self) -> List[dict]:
-        loader = DataLoader(self.parashift_dir, obfuscate_code=False)
-        if not loader.load_cache():
-            loader.load()
-        pairs = list(paired_programs(loader, self.parashift_dir).values())
-        if len(pairs) < 3:
-            raise ValueError('Random 3-shot baseline requires at least 3 complete paired programs')
-        return pairs
-
-    def _random_pairs(self, task_id: str) -> List[dict]:
-        eligible = [p for p in self._fallback_pairs if p['project'] != task_id]
-        if len(eligible) < 3:
-            raise ValueError('Random 3-shot baseline requires 3 non-query paired programs')
-        return random.sample(eligible, 3)
 
     def load_samples(self) -> List[Dict]:
         json_file = self.input_dir / "selected_samples.json"
@@ -192,7 +173,7 @@ class CToCudaIterativeTranslator:
 
     def _retrieve(self, code_path: str, task_id: str) -> tuple:
         if self.retriever is None:
-            return self._random_pairs(task_id), []
+            return [], []
 
         print('   检索中...', end='  ', flush=True)
         output_dir = str(self.retrieval_output_dir / task_id)
@@ -552,7 +533,7 @@ def main():
     parser.add_argument("--retrieval_method", choices=['ours', 'bm25', 'raw-bm25'], default='ours')
     parser.add_argument("--retrieval_alpha",     type=float, default=0.4)
     parser.add_argument("--retrieval_beta",      type=float, default=0.6)
-    parser.add_argument("--no_retrieval",        action="store_true", help="关闭检索，使用随机 reference")
+    parser.add_argument("--no_retrieval",        action="store_true", help="关闭检索示例，使用零样本迭代优化")
     parser.add_argument("--retrieval_output_dir", default="./retrieval_results")
     parser.add_argument("--heldout_projects", help="JSON file containing the held-out projects array")
     parser.add_argument("--loop_review", help="Source-bound JSON review for query and paired loops")
@@ -575,7 +556,7 @@ def main():
             from retrieval_module.ret_methods.two_stage_retrieval import TwoStageRetrieval
             retriever = TwoStageRetrieval(
                 **retrieval_args, alpha=args.retrieval_alpha, beta=args.retrieval_beta,
-                model_name=args.model, org=args.org, use_llm=True)
+                org=args.org, use_llm=True)
         else:
             from retrieval_module.ret_methods.bm25_retrieval import BM25Retrieval
             retriever = BM25Retrieval(

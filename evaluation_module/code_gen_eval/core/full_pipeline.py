@@ -42,7 +42,7 @@ class FullOptimizationPipeline:
             "outputs_gold": "./outputs_gold_LARGE",
             "timeout": 300,
             "num_runs": 3,
-            "warmup_runs": 1
+            "warmup_runs": 3
         }
 
     def run(

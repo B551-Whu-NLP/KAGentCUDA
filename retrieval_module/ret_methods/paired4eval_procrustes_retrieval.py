@@ -9,7 +9,7 @@
 #   CUDAOnlyRetrieval     - 任务2：C → CUDA-only，无答案，实际检索
 #
 # 特征: tree-sitter AST 结构特征
-# Procrustes 训练: Z-score 标准化
+# Procrustes 训练: 均值中心化 + SVD 正交映射
 # ============================================================
 
 import os
@@ -181,7 +181,7 @@ class ProcrustesRetrieval:
     """
     Procrustes 跨语言检索核心。
     负责：
-      - 用配对数据（C-CUDA pair）训练 Procrustes 变换矩阵（Z-score 标准化版）
+      - 用配对数据（C-CUDA pair）训练均值中心化的 Procrustes 变换矩阵
       - 提供通用的相似度计算和检索接口
     """
 
@@ -200,9 +200,7 @@ class ProcrustesRetrieval:
 
         # 训练后填充
         self.mu_C = None
-        self.std_C = None
         self.mu_K = None
-        self.std_K = None
         self.W = None
 
         print(f"{'='*60}")
@@ -217,52 +215,36 @@ class ProcrustesRetrieval:
     # 训练
     # ----------------------------------------------------------
     def train_procrustes(self, V_C: np.ndarray, V_K: np.ndarray):
-        """
-        用配对数据训练 Procrustes 变换矩阵（Z-score 标准化版）。
-
-        步骤：
-          1. 对 C 侧和 CUDA 侧分别做 Z-score 标准化
-          2. 计算跨协方差矩阵并 SVD 求正交变换 W
-          3. 保存均值、标准差、W，供后续检索使用
-        """
-        print("\n训练 Procrustes W 矩阵（Z-score 标准化版）...")
+        """Fit a row-vector orthogonal map on mean-centered paired features."""
+        print("\n训练 Procrustes W 矩阵（均值中心化）...")
 
         mu_C = V_C.mean(axis=0)
         mu_K = V_K.mean(axis=0)
+        centered_C = V_C - mu_C
+        centered_K = V_K - mu_K
 
-        std_C = V_C.std(axis=0)
-        std_K = V_K.std(axis=0)
-        std_C[std_C < 1e-8] = 1.0
-        std_K[std_K < 1e-8] = 1.0
-
-        V_C_norm = (V_C - mu_C) / std_C
-        V_K_norm = (V_K - mu_K) / std_K
-
-        M = V_K_norm.T @ V_C_norm
-        U, S, Vt = np.linalg.svd(M)
+        U, _, Vt = np.linalg.svd(centered_K.T @ centered_C)
         W = U @ Vt
 
         residual = np.linalg.norm(
-            V_K_norm @ W - V_C_norm, 'fro'
-        ) / max(1e-10, np.linalg.norm(V_C_norm, 'fro'))
+            centered_K @ W - centered_C, 'fro'
+        ) / max(1e-10, np.linalg.norm(centered_C, 'fro'))
         print(f"残差: {residual:.4f}")
 
         self.mu_C = mu_C
-        self.std_C = std_C
         self.mu_K = mu_K
-        self.std_K = std_K
         self.W = W
 
     # ----------------------------------------------------------
     # 相似度计算
     # ----------------------------------------------------------
     def _map_kernel_vec(self, k_vec: np.ndarray) -> np.ndarray:
-        """将 CUDA kernel 结构特征向量映射到 C 空间（Z-score + Procrustes）"""
-        return ((k_vec - self.mu_K) / self.std_K) @ self.W
+        """Map a CUDA structural vector into the centered C feature space."""
+        return (k_vec - self.mu_K) @ self.W + self.mu_C
 
     def _map_loop_vec(self, c_vec: np.ndarray) -> np.ndarray:
-        """对 C loop 结构特征向量做 Z-score 标准化（与映射后的 kernel 同坐标系）"""
-        return (c_vec - self.mu_C) / self.std_C
+        """Keep the query in the original C feature space."""
+        return c_vec
 
     def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
         """L2 归一化余弦相似度"""
@@ -437,7 +419,7 @@ class ProcrustesRetrieval:
             print(f"JSON 已保存: {json_path}")
 
         # query loops 信息
-        samples_path = os.path.join(actual_dir, f"query_loops_seed{self.seed}.json")
+        samples_path = os.path.join(actual_dir, f"query_loops_{base}.json")
         loop_samples = [
             {
                 "id": loop["id"],
@@ -462,9 +444,9 @@ class PairedEvaluation:
 
     数据来源：配对 C–CUDA 语料（C loops + 配对的 CUDA kernels）
     流程：
-      1. 加载配对数据，训练 Procrustes（特征带缓存）
-      2. 用全量 C loops 在全量 CUDA kernels 中检索
-      3. 输出结果（含特征相关性分析）
+      1. 加载配对数据，用训练项目拟合 Procrustes（特征带缓存）
+      2. 用所选查询项目的 C loops 在全量 CUDA kernels 中检索
+      3. 输出结果（含可选的特征相关性分析）
     """
 
     def __init__(self, retrieval: ProcrustesRetrieval, data_dir: str):
@@ -481,19 +463,23 @@ class PairedEvaluation:
             self._loader = loader
         return self._loader
 
-    def _extract_paired_vecs(self, c_vecs: dict, cuda_vecs: dict) -> tuple:
-        """从缓存中取配对数据的特征向量，用于训练 Procrustes"""
+    def _extract_paired_vecs(self, c_vecs: dict, cuda_vecs: dict, train_projects=None) -> tuple:
+        """Extract alignment pairs from training projects only."""
         loader = self._get_loader()
         kid_to_code = {k['id']: k['code'] for k in loader.cuda_codes}
         paired_c, paired_k = [], []
 
         for c in loader.c_codes:
+            if train_projects is not None and c['project'] not in train_projects:
+                continue
             for kid in c.get('pair_kernel_ids', []):
                 if kid in kid_to_code and c['id'] in c_vecs and kid in cuda_vecs:
                     paired_c.append(c_vecs[c['id']])
                     paired_k.append(cuda_vecs[kid])
 
         print(f"配对数据对数: {len(paired_c)}")
+        if len(paired_c) < 2:
+            raise ValueError('Procrustes requires at least two training pairs')
         return np.array(paired_c), np.array(paired_k)
 
     def run_correlation_analysis(self, V_C: np.ndarray, V_K: np.ndarray):
@@ -528,30 +514,32 @@ class PairedEvaluation:
             print(f"{FEATURE_NAMES[i]:<22} | {np.mean(c_col):<8.3f} {np.mean(k_col):<10.3f} | {c_nz:<10.1%} {k_nz:<10.1%}{alert}")
         print("=" * 75 + "\n")
 
-    def run(self, output_dir: str, run_analysis: bool = False, save_json: bool = False):
-        """
-        执行 paired 评估。
-
-        Args:
-            output_dir   : 输出目录
-            run_analysis : 是否在训练前运行特征相关性分析
-        """
+    def run(
+        self,
+        output_dir: str,
+        run_analysis: bool = False,
+        save_json: bool = False,
+        train_projects=None,
+        query_projects=None,
+        output_tag: str = "paired",
+    ):
+        """Fit on training projects and retrieve for the selected query projects."""
         loader = self._get_loader()
+        train_projects = set(train_projects) if train_projects is not None else None
+        query_projects = set(query_projects) if query_projects is not None else None
 
         # 提取特征（带缓存）
         print("\n提取特征（带缓存）...")
-        c_vecs   = extract_c_vecs(loader.c_codes,    self.data_dir, self.retrieval.obfuscate_code)
+        c_vecs = extract_c_vecs(loader.c_codes, self.data_dir, self.retrieval.obfuscate_code)
         cuda_vecs = extract_cuda_vecs(loader.cuda_codes, self.data_dir, self.retrieval.obfuscate_code)
 
-        # 训练 Procrustes
-        V_C, V_K = self._extract_paired_vecs(c_vecs, cuda_vecs)
+        V_C, V_K = self._extract_paired_vecs(c_vecs, cuda_vecs, train_projects)
 
         if run_analysis:
             self.run_correlation_analysis(V_C, V_K)
 
         self.retrieval.train_procrustes(V_C, V_K)
 
-        # 构造查询 loops
         query_loops = [
             {
                 "id": c['id'],
@@ -565,9 +553,9 @@ class PairedEvaluation:
                 "dwarf_vector": c.get('dwarf_vector', []),
             }
             for c in loader.c_codes
+            if query_projects is None or c['project'] in query_projects
         ]
 
-        # 构造 corpus kernels
         corpus_kernels = [
             {
                 "id": k['id'],
@@ -581,7 +569,7 @@ class PairedEvaluation:
 
         return self.retrieval.retrieval(
             query_loops, corpus_kernels, output_dir,
-            output_tag="paired",
+            output_tag=output_tag,
             save_json=save_json,
             c_vecs=c_vecs,
             cuda_vecs=cuda_vecs,
@@ -599,6 +587,8 @@ if __name__ == "__main__":
     parser.add_argument('--beta', '-b', type=float, default=0.7, help='矮人特征权重')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--obfuscate', action='store_true')
+    parser.add_argument('--split_file', default=None, help='项目级交叉拟合划分 JSON')
+    parser.add_argument('--fold_id', type=int, default=None, help='划分 JSON 中的 fold_id')
     parser.add_argument('--num_loops', type=int, default=10, help='随机选取 loop 数（cuda_only 任务）')
     parser.add_argument('--loop_ids_file', default=None, help='指定 loop IDs 的 JSON 文件（cuda_only 任务）')
     parser.add_argument('--save_json', action='store_true', help='保存完整 JSON 结果（默认关闭）')
@@ -613,4 +603,34 @@ if __name__ == "__main__":
     )
 
     task = PairedEvaluation(core, args.parashift_dir)
-    task.run(args.output_dir, run_analysis=args.run_analysis, save_json=args.save_json)
+    train_projects = None
+    query_projects = None
+    output_tag = "paired"
+    if args.split_file:
+        if args.fold_id is None:
+            parser.error('--fold_id is required with --split_file')
+        with open(args.split_file, encoding='utf-8') as f:
+            split = json.load(f)
+        fold = next((item for item in split.get('folds', [])
+                     if item.get('fold_id') == args.fold_id), None)
+        if fold is None:
+            parser.error(f'fold_id {args.fold_id} not found in {args.split_file}')
+        train_projects = set(fold['train'])
+        query_projects = set(fold['test'])
+        paired_projects = {c['project'] for c in task._get_loader().c_codes}
+        if train_projects & query_projects:
+            parser.error('Training and test projects must be disjoint')
+        if train_projects | query_projects != paired_projects:
+            parser.error('The selected fold must cover all paired projects exactly once')
+        output_tag = f"paired_fold{args.fold_id}"
+    elif args.fold_id is not None:
+        parser.error('--split_file is required with --fold_id')
+
+    task.run(
+        args.output_dir,
+        run_analysis=args.run_analysis,
+        save_json=args.save_json,
+        train_projects=train_projects,
+        query_projects=query_projects,
+        output_tag=output_tag,
+    )

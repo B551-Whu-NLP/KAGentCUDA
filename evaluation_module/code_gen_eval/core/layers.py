@@ -51,7 +51,7 @@ class LayerResult:
         if self.layer == LayerType.L1:
             signal = f"编译失败\n"
             for e in self.errors:
-                signal += f"- {e.get('type', 'compile_error')} 第{e.get('line', '?')}行: {e.get('message', '')}\n"
+                signal += f"- {e.get('type', 'compile_error')} 第{e.get('line', '?')}行\n"
             return f"""你是 CUDA 编程专家。生成的 CUDA 程序编译失败，请修复代码。
 
 诊断信号 ({layer_name}: 编译失败):
@@ -166,7 +166,7 @@ class L1Evaluator(BaseLayerEvaluator):
             "nvcc",
             str(source_path.resolve()),
             "-o", str(bin_path.resolve()),
-            "-lm"
+            "-O3", "-arch=sm_89", "-lm"
         ]
         if include_path.exists():
             cmd.extend(["-I", str(include_path.resolve())])
@@ -190,14 +190,13 @@ class L1Evaluator(BaseLayerEvaluator):
                 errors.append({
                     "line": int(match.group("line")),
                     "type": match.group('msg').split(':', 1)[0].strip(),
-                    "message": match.group("msg").strip()
                 })
 
             # 去重
             seen = set()
             unique_errors = []
             for e in errors:
-                key = (e["line"], e["message"])
+                key = (e["line"], e["type"])
                 if key not in seen:
                     seen.add(key)
                     unique_errors.append(e)
@@ -236,7 +235,7 @@ class L2Evaluator(BaseLayerEvaluator):
             "nvcc",
             str(source_path.resolve()),
             "-o", str(bin_path.resolve()),
-            "-g", "-G", "-lm"
+            "-g", "-G", "-O3", "-arch=sm_89", "-lm"
         ]
         if include_path.exists():
             cmd.extend(["-I", str(include_path.resolve())])
@@ -474,12 +473,10 @@ class L3Evaluator(BaseLayerEvaluator):
 
 
 class L4Evaluator(BaseLayerEvaluator):
-    """L4: 性能检查
+    """Measure complete C/CUDA programs with three warmups and three timed runs.
 
-    1) 编译 CUDA 与 C baseline (若未就绪)
-    2) Only the exact-source synthetic adapter can supply instrumented samples.
-    3) Synthetic speedup is illustrative, not validated benchmark evidence; arbitrary adapters fail closed.
-    Process times are proxy-only; collect structured nsys diagnostics only after a synthetic timing failure.
+    CUDA uses cudaEvent around H2D, kernel and D2H work; CPU uses a monotonic
+    host timer around the equivalent computation. Nsys supplies failure diagnostics.
     """
 
     WARMUP = 3
@@ -503,12 +500,18 @@ class L4Evaluator(BaseLayerEvaluator):
         except Exception:
             return None
 
+    def _c_baseline_source(self, task_type: str, task_id: str) -> Path:
+        if self.config.get('synthetic_vector_add_timing'):
+            return Path(self.config['synthetic_cpu_source'])
+        dataset_root = Path(self.config.get("dataset_root", "./code_datas"))
+        c_source = dataset_root / task_type / task_id / "c" / f"{task_id}.c"
+        if not c_source.exists():
+            c_source = dataset_root / task_type / task_id / "c" / f"c_{task_id.split('_')[-1]}.c"
+        return c_source
+
     def _compile_c_baseline(self, task_type: str, task_id: str) -> Optional[Path]:
         dataset_root = Path(self.config.get("dataset_root", "./code_datas"))
-        c_source = Path(self.config.get('synthetic_cpu_source', '')) if self.config.get('synthetic_vector_add_timing') else (
-            dataset_root / task_type / task_id / "c" / f"{task_id}.c")
-        if not c_source.exists() and not self.config.get('synthetic_vector_add_timing'):
-            c_source = dataset_root / task_type / task_id / "c" / f"c_{task_id.split('_')[-1]}.c"
+        c_source = self._c_baseline_source(task_type, task_id)
         if not c_source.is_file():
             logger.warning(f"L4: 找不到 C baseline 源文件 ({task_id})")
             return None
@@ -634,8 +637,44 @@ class L4Evaluator(BaseLayerEvaluator):
             return None
         return rows or None
 
+    def _nsys_overlap(self, report: Path) -> Tuple[Optional[bool], str]:
+        proc = subprocess.run(
+            ['nsys', 'stats', '--format', 'csv', '--report', 'cuda_gpu_trace',
+             str(report) + '.nsys-rep'],
+            cwd=self.workdir, capture_output=True, text=True,
+            timeout=self.config.get('timeout', 300),
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return None, ''
+        try:
+            reader = csv.DictReader(io.StringIO(proc.stdout))
+            fields = {name.strip().lstrip('\ufeff').lower(): name for name in reader.fieldnames or []}
+            start_col = fields.get('start (ns)')
+            duration_col = fields.get('duration (ns)')
+            name_col = fields.get('name')
+            if not all((start_col, duration_col, name_col)):
+                return None, proc.stdout
+            kernels, transfers = [], []
+            for row in reader:
+                start = float(row[start_col].replace(',', ''))
+                duration = float(row[duration_col].replace(',', ''))
+                if duration < 0:
+                    return None, proc.stdout
+                end = start + duration
+                name = re.sub(r'[^a-z0-9]', '', row[name_col].lower())
+                if any(label in name for label in ('htod', 'hosttodevice', 'dtoh', 'devicetohost')):
+                    transfers.append((start, end))
+                elif not any(label in name for label in (
+                        'memset', 'memcpy', 'dtod', 'devicetodevice', 'htoh', 'hosttohost')):
+                    kernels.append((start, end))
+            overlap = any(max(k_start, t_start) < min(k_end, t_end)
+                          for k_start, k_end in kernels for t_start, t_end in transfers)
+            return overlap, proc.stdout
+        except (csv.Error, TypeError, ValueError):
+            return None, proc.stdout
+
     def _run_nsys(self, binary: Path) -> Dict[str, Any]:
-        """Collect device-time summaries; overlap requires timeline evidence."""
+        """Collect device-time summaries and timeline-based transfer overlap."""
         diagnostics = dict.fromkeys(('kernel_time_ms', 'h2d_time_ms', 'd2h_time_ms',
                                      'memcpy_kernel_ratio', 'has_overlap'))
         raw_stats = []
@@ -694,6 +733,9 @@ class L4Evaluator(BaseLayerEvaluator):
                 ratio = (h2d + d2h) / kernel
                 if ratio < float('inf'):
                     diagnostics['memcpy_kernel_ratio'] = ratio
+            diagnostics['has_overlap'], trace = self._nsys_overlap(report)
+            if trace:
+                raw_stats.append(f'[cuda_gpu_trace]\n{trace}')
             return diagnostics
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return diagnostics
@@ -706,13 +748,13 @@ class L4Evaluator(BaseLayerEvaluator):
         logger.info("L4: 性能检查")
  
         try:
+            from .benchmark_timing import BenchmarkTiming
             from .synthetic_timing import SyntheticVectorAddTiming
             timing = self.config.get('timing_adapter')
             synthetic = self.config.get('synthetic_vector_add_timing', False)
-            if timing is not None and synthetic:
-                raise ValueError('Caller-provided timing_adapter is not allowed with synthetic timing')
+            proxy = self.config.get('allow_proxy_timing', False)
             if timing is not None:
-                raise ValueError('Untrusted external timing_adapter cannot establish validated speedup')
+                raise ValueError('Use the built-in benchmark timing protocol')
             if synthetic:
                 timing = SyntheticVectorAddTiming(
                     source_path,
@@ -721,7 +763,15 @@ class L4Evaluator(BaseLayerEvaluator):
                     self.config.get('timeout', 300),
                 )
                 timing.validate_sources()
-            proxy = self.config.get('allow_proxy_timing', False)
+            elif not proxy:
+                dataset_root = Path(self.config.get("dataset_root", "./code_datas"))
+                timing = BenchmarkTiming(
+                    source_path,
+                    self._c_baseline_source(task_type, task_id),
+                    self.workdir / 'instrumented',
+                    self.config.get('timeout', 300),
+                    dataset_root / 'libs' / 'headers',
+                )
             result.metrics.update({'timing_protocol': 'unverified', 'speedup': None})
             cuda_bin = self._compile_cuda_release(source_path, task_id)
             if cuda_bin is None:
@@ -773,7 +823,8 @@ class L4Evaluator(BaseLayerEvaluator):
             speedup = cpu_ms / cuda_ms
             result.metrics.update({
                 'cuda_ms': cuda_ms, 'cpu_ms': cpu_ms,
-                'timing_protocol': 'synthetic_vector_add_only' if timing else 'proxy_unvalidated',
+                'timing_protocol': ('synthetic_vector_add_only' if synthetic else
+                                       'instrumented_end_to_end_v1') if timing else 'proxy_unvalidated',
                 'baseline_available': True, 'warmup': self.WARMUP, 'runs': self.RUNS,
                 'timing_source_cuda': cuda_src, 'timing_source_cpu': cpu_src,
             })

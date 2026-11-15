@@ -32,7 +32,7 @@ else ifeq ($(PLAT),omp)
 else ifeq ($(PLAT),cuda)
     CXX     := nvcc
     # 增加 -Xcompiler -fopenmp 以支持 CUDA 代码中混合使用 OpenMP
-    CFLAGS  := -O2 -arch=sm_80 $(INCLUDES) -Xcompiler -fopenmp
+    CFLAGS  := -O3 -arch=sm_89 $(INCLUDES) -Xcompiler -fopenmp
     LDFLAGS := -lm -lgomp
 
 else ifeq ($(PLAT),rocm)

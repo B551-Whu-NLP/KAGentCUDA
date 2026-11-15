@@ -9,13 +9,13 @@ OUTDIR := bin
 # CPU (C11)
 CC_cpu   := gcc
 EXT_cpu  := c
-FL_cpu   := -O2 -std=c11 -Wall
+FL_cpu   := -O3 -std=c11 -Wall
 LD_cpu   := -lm
 
 # CUDA (C++17)
 CC_cuda  := nvcc
 EXT_cuda := cu
-FL_cuda  := -O2 -arch=sm_80 -std=c++17
+FL_cuda  := -O3 -arch=sm_89 -std=c++17
 LD_cuda  := 
 
 # ROCm (C++17)

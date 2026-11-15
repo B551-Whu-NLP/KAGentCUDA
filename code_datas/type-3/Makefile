@@ -52,7 +52,7 @@ ifeq ($(PLAT),cpu)
 
 else ifeq ($(PLAT),cuda)
     CC      := nvcc
-    CFLAGS  := $(COMMON_FLAGS) -arch=sm_80 -x cu -fmad=false
+    CFLAGS  := $(COMMON_FLAGS) -arch=sm_89 -x cu -fmad=false
     LDFLAGS := -lm
 
 else ifeq ($(PLAT),rocm)

@@ -122,7 +122,7 @@ Replace `bm25` with `raw-bm25` for the raw baseline or `ours` for the default me
 | `--retrieval_beta` | `0.6` | Dwarf feature weight |
 | `--heldout_projects` | — | Held-out project split for retrieval |
 | `--loop_review` | — | Source-bound loop review |
-| `--no_retrieval` | off | Use random reference fallback |
+| `--no_retrieval` | off | Zero-shot refinement without retrieval examples |
 | `--retrieval_output_dir` | `./retrieval_results` | Retrieval output directory |
 
 ### Output Structure
@@ -186,16 +186,16 @@ Replace `QUERY_PROJECT` with a held-out project. Stage 1 matches C loops to pair
 
 ## Basic Retrieval Utilities
 
-For batch paired retrieval and scoring on locally prepared task data and labels:
+For the paired-corpus Procrustes evaluation, provide a project-level split JSON and select one fold. The schema is `{"n_folds":5,"seed":42,"folds":[{"fold_id":0,"train":[...],"test":[...]}]}`, where `train` and `test` contain project names:
 
 ```bash
-python main_scripts/paired4eval_run_full_pipeline.py \
-    --method procrustes --task paired \
+python retrieval_module/ret_methods/paired4eval_procrustes_retrieval.py \
+    --split_file ./project_folds.json --fold_id 0 --obfuscate \
     --alpha 0.4 --beta 0.6 \
-    --parashift_dir ./code_datas
+    --parashift_dir ./code_datas --output_dir ./res_rag
 ```
 
-The utility connects retrieval, result validity checking, Top-K scoring and NDCG scoring for the supplied inputs. CodeBERT and GraphCodeBERT options require local model weights.
+Alignment is fitted only on `train`, and only `test` loops are queries; the complete paired CUDA pool remains the retrieval corpus. Repeat with fold IDs 0–4 to obtain separately named per-fold CSV files. Other retrieval baselines and Top-K/NDCG scoring are available through `main_scripts/paired4eval_run_full_pipeline.py`; CodeBERT and GraphCodeBERT require local model weights.
 
 ```bash
 # Identifier-obfuscated BM25; omit --obfuscate for raw BM25

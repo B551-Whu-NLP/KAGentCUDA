@@ -27,6 +27,7 @@ class CToCudaTranslator:
         self.max_retries = max_retries
         self.seed = seed
         self.max_samples = max_samples
+        random.seed(seed)
         
         if input_dir:
             self.input_dir = Path(input_dir)
@@ -61,7 +62,7 @@ class CToCudaTranslator:
         
         loader = DataLoader(self.parashift_dir, obfuscate_code=False)
         if not loader.load_cache():
-            loader.load()
+            raise FileNotFoundError('Prepared development-pair cache is required for random 3-shot')
         self.reference_pairs = list(paired_programs(loader, self.parashift_dir).values())
         if len(self.reference_pairs) < 3:
             raise ValueError('Random 3-shot requires 3 complete C/CUDA programs')

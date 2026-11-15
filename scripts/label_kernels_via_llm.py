@@ -38,7 +38,7 @@ class MultiRepoKernelClassifier:
             org=org,
             log_path="./logs",
             verbose=False,
-            temperature=0.1,
+            temperature=0.3,
             top_p=0.95
         )
         
@@ -106,7 +106,7 @@ class MultiRepoKernelClassifier:
                 {"role": "user", "content": user_prompt}
             ]
             
-            response, input_tokens, output_tokens, cost = self.llm.chat(messages, stream=False)
+            response, input_tokens, output_tokens, cost = self.llm.chat(messages, stream=False, max_tokens=8192)
             
             response = response.strip()
             if response.startswith("```json"):

@@ -122,7 +122,7 @@ python generation_module/ret_gen_iter.py \
 | `--retrieval_beta` | `0.6` | Dwarf 特征权重 |
 | `--heldout_projects` | — | 检索留出项目划分 |
 | `--loop_review` | — | 绑定源码的循环审查标注 |
-| `--no_retrieval` | 关闭 | 使用随机参考示例降级 |
+| `--no_retrieval` | 关闭 | 不使用检索示例的零样本迭代优化 |
 | `--retrieval_output_dir` | `./retrieval_results` | 检索结果目录 |
 
 ### 输出目录结构
@@ -186,16 +186,16 @@ python main_scripts/run_two_stage.py \
 
 ## 基础检索工具
 
-对本地准备的任务数据和标签进行配对批量检索与评分：
+配对语料的 Procrustes 评估使用项目级划分 JSON，并选择其中一折。JSON 结构为 `{"n_folds":5,"seed":42,"folds":[{"fold_id":0,"train":[...],"test":[...]}]}`，其中 `train` 和 `test` 为项目名称：
 
 ```bash
-python main_scripts/paired4eval_run_full_pipeline.py \
-    --method procrustes --task paired \
+python retrieval_module/ret_methods/paired4eval_procrustes_retrieval.py \
+    --split_file ./project_folds.json --fold_id 0 --obfuscate \
     --alpha 0.4 --beta 0.6 \
-    --parashift_dir ./code_datas
+    --parashift_dir ./code_datas --output_dir ./res_rag
 ```
 
-该工具针对所提供的输入串联检索、结果有效性检查、Top-K 评分和 NDCG 评分。CodeBERT 与 GraphCodeBERT 选项需要本地模型权重。
+对齐仅使用 `train` 项目拟合，仅将 `test` 项目中的循环作为查询，完整配对 CUDA 池仍作为检索候选。依次将 fold ID 设为 0–4，可得到按折独立命名的 CSV 文件。其他检索基线及 Top-K/NDCG 评分可通过 `main_scripts/paired4eval_run_full_pipeline.py` 执行；CodeBERT 与 GraphCodeBERT 需要本地模型权重。
 
 ```bash
 # 标识符混淆 BM25；移除 --obfuscate 即为原始代码 BM25

@@ -61,42 +61,51 @@ DWARF_ORDER = [
     "finite_state_machines",
 ]
 DWARF_DIM = len(DWARF_ORDER)  # 13
+DWARF_ANNOTATION_MODELS = ("deepseek-v3-pro", "gpt-4.1", "qwen3-coder-next")
 
 
 # ============================================================
 # LLM 标注：提取 loop + 生成 dwarf_vector
 # ============================================================
 def _annotate_dwarf(loop_code: str, llm, system_prompt: str) -> list:
-    """
-    用 LLM 标注单个 loop，返回 13 维 dwarf_vector。
-    标注失败时返回全零向量。
-    """
+    """Return one model's 13 confidence scores in the canonical Dwarf order."""
     from prompts.classify_13_dwarf_prompt import Dwarf13CPrompt
     user_prompt = Dwarf13CPrompt.get_user_prompt(loop_code)
-    try:
-        response, _, _, _ = llm.chat(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_prompt},
-            ],
-            stream=False
-        )
-        response = response.strip()
-        if response.startswith("```json"):
-            response = response[7:].rstrip("` \n")
-        elif response.startswith("```"):
-            response = response[3:].rstrip("` \n")
-        result = json.loads(response)
-        vec = [float(result.get(k, 0.0)) for k in DWARF_ORDER]
-        return vec
-    except Exception as e:
-        print(f"    ⚠️  Dwarf 标注失败: {e}")
-        return [0.0] * DWARF_DIM
+    response, _, _, _ = llm.chat(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        stream=False,
+        max_tokens=8192,
+    )
+    response = response.strip()
+    if response.startswith("```json"):
+        response = response[7:].rstrip("` \n")
+    elif response.startswith("```"):
+        response = response[3:].rstrip("` \n")
+    result = json.loads(response)
+    vec = np.array([float(result.get(k, 0.0)) for k in DWARF_ORDER], dtype=np.float32)
+    if np.any(~np.isfinite(vec)) or np.any((vec < 0.0) | (vec > 1.0)):
+        raise ValueError('Dwarf confidence scores must be finite values in [0, 1]')
+    return vec
+
+
+def _consensus_dwarf(annotations: list) -> list:
+    """Average three models, suppress scores below 0.1, and L2-normalize."""
+    scores = np.asarray(annotations, dtype=np.float32)
+    if scores.shape != (len(DWARF_ANNOTATION_MODELS), DWARF_DIM):
+        raise ValueError('Dwarf consensus requires three 13-dimensional annotations')
+    consensus = scores.mean(axis=0)
+    consensus[consensus < 0.1] = 0.0
+    norm = np.linalg.norm(consensus)
+    if norm < 1e-10:
+        raise ValueError('Dwarf consensus is zero after thresholding')
+    return (consensus / norm).tolist()
 
 
 def extract_loops_from_file(
     c_file: str,
-    model_name: str = "qwen3-coder-next",
     org: str = "ali",
     use_llm: bool = True,
     loop_review=None,
@@ -125,32 +134,32 @@ def extract_loops_from_file(
             raise ValueError('Loop review left no query loops')
     print(f"  保留 {len(raw_loops)} 个 loop，人工排除 {excluded_count} 个")
 
-    # LLM 标注
-    llm = None
+    llms = []
     system_prompt = None
     if use_llm:
-        try:
-            from llm_utils import OpenAILLM
-            from prompts.classify_13_dwarf_prompt import Dwarf13CPrompt
-            llm = OpenAILLM(
+        from llm_utils import OpenAILLM
+        from prompts.classify_13_dwarf_prompt import Dwarf13CPrompt
+        llms = [
+            OpenAILLM(
                 model_name=model_name,
                 org=org,
                 log_path="./logs",
                 verbose=False,
-                temperature=0.1,
+                temperature=0.3,
                 top_p=0.95,
             )
-            system_prompt = Dwarf13CPrompt.get_system_prompt()
-            print(f"  LLM 标注模型: {model_name}")
-        except Exception as e:
-            print(f"  ⚠️  LLM 初始化失败，dwarf_vector 将全零: {e}")
-            use_llm = False
+            for model_name in DWARF_ANNOTATION_MODELS
+        ]
+        system_prompt = Dwarf13CPrompt.get_system_prompt()
+        print(f"  LLM 标注模型: {', '.join(DWARF_ANNOTATION_MODELS)}")
 
     loops = []
     for raw in tqdm(raw_loops, desc="标注 loops", unit="loop"):
-        if use_llm and llm is not None:
+        if use_llm:
             code = obfuscate_ranking_code(raw['source_code']) if obfuscate_code else raw['source_code']
-            dwarf_vec = _annotate_dwarf(code, llm, system_prompt)
+            dwarf_vec = _consensus_dwarf([
+                _annotate_dwarf(code, llm, system_prompt) for llm in llms
+            ])
         else:
             dwarf_vec = [0.0] * DWARF_DIM
 
@@ -186,7 +195,6 @@ class TwoStageRetrieval:
         beta: float = 0.6,
         seed: int = 42,
         obfuscate_code: bool = True,
-        model_name: str = "qwen3-coder-next",
         org: str = "ali",
         use_llm: bool = True,
         heldout_projects=None,
@@ -204,7 +212,6 @@ class TwoStageRetrieval:
         self.beta           = beta
         self.seed           = seed
         self.obfuscate_code = obfuscate_code
-        self.model_name     = model_name
         self.org            = org
         self.use_llm        = use_llm
         self.loop_review = LoopExclusions(loop_review) if loop_review else None
@@ -226,7 +233,7 @@ class TwoStageRetrieval:
         print(f"  Beta  (矮人特征权重) : {beta}")
         print(f"  Top-K1 (C 文件)     : {TOP_K1}")
         print(f"  Top-K2 (CUDA files) : {TOP_K2}")
-        print(f"  LLM 标注             : {'开启 (' + model_name + ')' if use_llm else '关闭'}")
+        print(f"  LLM 标注             : {'三模型共识' if use_llm else '关闭'}")
         print(f"{'='*60}\n")
 
     def prepare(self):
@@ -518,7 +525,6 @@ class TwoStageRetrieval:
 
         query_loops, excluded_query_count = extract_loops_from_file(
             c_file,
-            model_name=self.model_name,
             org=self.org,
             use_llm=self.use_llm,
             loop_review=self.loop_review,
@@ -625,7 +631,6 @@ if __name__ == "__main__":
     parser.add_argument('--beta',  '-b',    type=float, default=0.6, help='矮人特征权重')
     parser.add_argument('--seed',           type=int,   default=42)
     parser.add_argument('--no_obfuscate',   action='store_true', help='仅用于 raw-code 对照实验')
-    parser.add_argument('--model_name',     default='qwen3-coder-next', help='LLM 模型名称')
     parser.add_argument('--org',            default='ali',              help='LLM 平台')
     parser.add_argument('--no_llm',         action='store_true',        help='跳过 LLM 标注（调试用）')
     parser.add_argument('--loop_review', help='Source-bound JSON review of output-only loops on both sides')
@@ -643,7 +648,6 @@ if __name__ == "__main__":
         beta           = args.beta,
         seed           = args.seed,
         obfuscate_code = not args.no_obfuscate,
-        model_name     = args.model_name,
         org            = args.org,
         use_llm        = not args.no_llm,
         heldout_projects = heldout,

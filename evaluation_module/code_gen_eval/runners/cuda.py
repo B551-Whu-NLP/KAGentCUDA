@@ -23,7 +23,7 @@ class CudaRunner(BaseRunner):
         self,
         workdir: Path,
         nvcc_path: str = "nvcc",
-        arch: str = "sm_80",
+        arch: str = "sm_89",
         cxx_flags: Optional[List[str]] = None,
         ld_flags: Optional[List[str]] = None,
         timeout: int = 120,
@@ -31,7 +31,7 @@ class CudaRunner(BaseRunner):
         super().__init__(workdir, timeout)
         self.nvcc_path = nvcc_path
         self.arch = arch
-        self.cxx_flags = cxx_flags or ["-O2", "-std=c++17"]
+        self.cxx_flags = cxx_flags or ["-O3", "-std=c++17"]
         self.ld_flags = ld_flags or ["-lm"]
         
         # 检测CUDA环境

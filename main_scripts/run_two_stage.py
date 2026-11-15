@@ -38,7 +38,6 @@ def parse_args():
     parser.add_argument('--seed',           type=int,   default=42)
     parser.add_argument('--heldout_projects', required=True, help='JSON file containing the 109 held-out projects')
     parser.add_argument('--no_obfuscate',   action='store_true')
-    parser.add_argument('--model_name',     default='qwen3-coder-next', help='LLM 模型名称')
     parser.add_argument('--org',            default='ali',              help='LLM 平台')
     parser.add_argument('--no_llm',         action='store_true',        help='跳过 LLM 标注（调试用）')
     parser.add_argument('--loop_review', help='Source-bound JSON review for query and paired loops')
@@ -74,7 +73,6 @@ def main():
         beta           = args.beta,
         seed           = args.seed,
         obfuscate_code = not args.no_obfuscate,
-        model_name     = args.model_name,
         org            = args.org,
         use_llm        = not args.no_llm,
         heldout_projects = heldout,

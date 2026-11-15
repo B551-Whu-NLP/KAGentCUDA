@@ -108,7 +108,7 @@ def judge_single_file(llm, system_prompt, c_file_info: dict) -> dict:
     ]
     try:
         response, input_tokens, output_tokens, cost = llm.chat(
-            messages, stream=False
+            messages, stream=False, max_tokens=8192
         )
         response = response.strip()
         if response.startswith('```json'):
@@ -139,7 +139,7 @@ def get_llm():
             org=ORG,
             log_path='./logs',
             verbose=False,
-            temperature=0.1,
+            temperature=0.3,
             top_p=0.95,
         )
     return _local.llm
