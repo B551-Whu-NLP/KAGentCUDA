@@ -29,10 +29,6 @@ KAGentCUDA/
 
 ---
 
-## 实验材料
-
-[v1.0.0 实验材料包](https://github.com/B551-Whu-NLP/KAGentCUDA/releases/download/v1.0.0/per_program_records.zip)包含实验配置、逐程序结果、三样例清单及 `three_shot_examples.zip`。相同文件也位于 [`supplementary/per_program_records/`](supplementary/per_program_records/)。
-
 ## 快速开始
 
 安装 Python 3.10+ 和 `requirements.txt` 中的依赖。通过环境变量配置 LLM 接口（例如 `--org ali` 使用 `ALI_API_KEY`）。通过 `KAGENTCUDA_C_GRAMMAR_LIB` 与 `KAGENTCUDA_CUDA_GRAMMAR_LIB` 指定兼容的 tree-sitter 语法库。
@@ -58,7 +54,7 @@ python main_scripts/run_all_c.py --dataset LARGE --skip-completed
 python main_scripts/run_all_c.py --dataset LARGE --types type-1 type-3
 ```
 
-生成结果保存到 `outputs_gold_LARGE/`，由用户本地生成，不入库。
+生成结果保存到 `outputs_gold_LARGE/`。
 
 ### 第二步：运行生成与评估
 
@@ -106,7 +102,7 @@ python generation_module/ret_gen_iter.py \
     --heldout_projects ./test_projects.json --loop_review ./loop_review.json
 ```
 
-将 `bm25` 替换为 `raw-bm25` 可运行原始代码基线，替换为 `ours` 使用默认方法。30B 是服务模型标识，不是独立算法：仅当配置的 Ali 兼容接口提供精确名称 **`qwen3-coder-30b-a3b-instruct`** 时才可调用；不附带模型权重或密钥。两种基线复用同一 L1-L4 结构化诊断与最佳候选回滚流程。基线生成结果及断点位于 `cuda_gen_results/<method>/`，诊断工作目录位于 `optimization_workspace/<method>/`，避免与 `ours` 混用；对比不同方法时应指定不同的 `--retrieval_output_dir`。
+将 `bm25` 替换为 `raw-bm25` 可运行原始代码基线，替换为 `ours` 使用默认方法。30B 配置使用模型标识 `qwen3-coder-30b-a3b-instruct`。两种基线复用同一 L1-L4 结构化诊断与最佳候选回滚流程。生成结果及断点位于 `cuda_gen_results/<method>/`，诊断工作目录位于 `optimization_workspace/<method>/`；对比不同方法时应指定不同的 `--retrieval_output_dir`。
 
 ### 参数说明
 
@@ -205,12 +201,6 @@ python main_scripts/paired4eval_run_full_pipeline.py \
 ```
 
 BM25 兼容入口使用已准备的原始配对缓存，并核验片段与本地原始源码一致。它与生成流程共享排名工具，但针对 C 循环到配对 CUDA kernel 进行基础评分，属于基础工具。可选 `--loop_review ./paired_loop_review.json` 应用绑定源码的配对循环审查。由于现有评分器使用固定结果路径，流水线要求输出到 `./res_rag`；结果为 `res_rag/bm25_output/retrieval_results_bm25[_obf].csv`。
-
----
-
-## 数据
-
-本仓库包含 `selected_samples/` 中的待翻译 C 查询、`code_datas/` 中的 C/CUDA 双侧项目及配套文件，以及根目录 `.data_cache/` 中的预处理缓存（含独立 CUDA kernel 代码片段）。独立 CUDA 原始源码、源码验证 manifest、留出划分 JSON 与循环审查 JSON 按「快速开始」所述在本地准备。
 
 ---
 

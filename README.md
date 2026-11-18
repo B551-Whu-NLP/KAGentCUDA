@@ -29,10 +29,6 @@ KAGentCUDA/
 
 ---
 
-## Experiment Artifact
-
-The [v1.0.0 experiment artifact](https://github.com/B551-Whu-NLP/KAGentCUDA/releases/download/v1.0.0/per_program_records.zip) contains the experiment configuration, per-program results, three-shot example manifests, and `three_shot_examples.zip`. The same records are available in [`supplementary/per_program_records/`](supplementary/per_program_records/).
-
 ## Quick Start
 
 Install Python 3.10+ and the packages in `requirements.txt`. Configure an LLM endpoint through environment variables (for example, `ALI_API_KEY` for `--org ali`). Provide compatible tree-sitter grammar libraries using `KAGENTCUDA_C_GRAMMAR_LIB` and `KAGENTCUDA_CUDA_GRAMMAR_LIB`.
@@ -58,7 +54,7 @@ python main_scripts/run_all_c.py --dataset LARGE --skip-completed
 python main_scripts/run_all_c.py --dataset LARGE --types type-1 type-3
 ```
 
-This produces `outputs_gold_LARGE/`, generated locally rather than committed.
+This produces `outputs_gold_LARGE/`.
 
 ### Step 2: Run Generation & Evaluation
 
@@ -106,7 +102,7 @@ python generation_module/ret_gen_iter.py \
     --heldout_projects ./test_projects.json --loop_review ./loop_review.json
 ```
 
-Replace `bm25` with `raw-bm25` for the raw baseline or `ours` for the default method. The 30B model is a service model identifier, not a separate algorithm: it can be called only if your configured Ali-compatible endpoint provides **exactly** `qwen3-coder-30b-a3b-instruct`. No weights or credentials are bundled. Both baselines reuse the same L1-L4 structured diagnostics and best-candidate rollback. Their generation outputs/checkpoints live under `cuda_gen_results/<method>/`, and diagnostic workspaces under `optimization_workspace/<method>/`, to avoid mixing baseline runs with `ours`. Use distinct `--retrieval_output_dir` values when comparing methods.
+Replace `bm25` with `raw-bm25` for the raw baseline or `ours` for the default method. The 30B configuration uses the model identifier `qwen3-coder-30b-a3b-instruct`. Both baselines reuse the same L1-L4 structured diagnostics and best-candidate rollback. Generation outputs/checkpoints are stored under `cuda_gen_results/<method>/`, and diagnostic workspaces under `optimization_workspace/<method>/`. Use distinct `--retrieval_output_dir` values when comparing methods.
 
 ### Arguments
 
@@ -205,12 +201,6 @@ python main_scripts/paired4eval_run_full_pipeline.py \
 ```
 
 This BM25 compatibility entry uses the prepared raw paired cache and validates snippets against local original sources. It shares the ranking helpers with generation, but ranks C loops against paired CUDA kernels as a basic scoring utility. An optional `--loop_review ./paired_loop_review.json` applies source-bound paired-loop decisions. The pipeline requires `./res_rag` because existing scorers use fixed result paths. Its output is `res_rag/bm25_output/retrieval_results_bm25[_obf].csv`.
-
----
-
-## Data
-
-The repository includes C translation queries in `selected_samples/`, paired C/CUDA projects and supporting files in `code_datas/`, and prepared caches in the root `.data_cache/`, including standalone CUDA kernel code snippets. Prepare the standalone original CUDA sources, source-validation manifest, held-out split JSON and loop-review JSON locally as described in Quick Start.
 
 ---
 
